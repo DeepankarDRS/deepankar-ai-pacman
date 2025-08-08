@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Deepankar-Man AI Pac-Man</title>
+<style>
+  body {
+    background: #121212;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    margin: 0;
+    color: #eee;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    user-select: none;
+  }
+  canvas {
+    background: #1e1e1e;
+    border: 3px solid #00bcd4;
+    border-radius: 12px;
+  }
+  #score {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 22px;
+    color: #00bcd4;
+  }
+</style>
+</head>
+<body>
+<div id="score">Score: 0</div>
+<canvas id="game" width="400" height="400"></canvas>
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+
+const GRID = 20;
+const ROWS = canvas.height / GRID;
+const COLS = canvas.width / GRID;
+
+let score = 0;
+let scoreDisplay = document.getElementById('score');
+
+let deepankarMan = {
+  x: 10 * GRID,
+  y: 10 * GRID,
+  size: GRID,
+  dx: GRID,
+  dy: 0,
+  mouthOpen: true,
+  mouthTimer: 0,
+};
+
+const neuralNodes = [];
+const dataPackets = [];
+const obstacles = [];
+
+// Generate neural nodes (dots)
+for(let i = 0; i < 50; i++) {
+  neuralNodes.push({
+    x: Math.floor(Math.random() * COLS) * GRID + GRID/2,
+    y: Math.floor(Math.random() * ROWS) * GRID + GRID/2,
+    radius: 5,
+    eaten: false,
+  });
+}
+
+// Generate data packets (bonus items)
+for(let i = 0; i < 5; i++) {
+  dataPackets.push({
+    x: Math.floor(Math.random() * COLS) * GRID + GRID/2,
+    y: Math.floor(Math.random() * ROWS) * GRID + GRID/2,
+    radius: 8,
+    eaten: false,
+  });
+}
+
+// Generate some obstacles
+for(let i = 0; i < 20; i++) {
+  obstacles.push({
+    x: Math.floor(Math.random() * COLS) * GRID,
+    y: Math.floor(Math.random() * ROWS) * GRID,
+    size: GRID,
+  });
+}
+
+// Check collision helper
+function isColliding(aX, aY, aSize, bX, bY, bSize) {
+  return (aX < bX + bSize) &&
+         (aX + aSize > bX) &&
+         (aY < bY + bSize) &&
+         (aY + aSize > bY);
+}
+
+// Draw Deepankar-Man (Pac-Man with AI style)
+function drawDeepankarMan() {
+  const x = deepankarMan.x + deepankarMan.size/2;
+  const y = deepankarMan.y + deepankarMan.size/2;
+  const radius = deepankarMan.size/2;
+
+  ctx.fillStyle = '#00bcd4';
+  ctx.beginPath();
+
+  let startAngle = 0.25 * Math.PI;
+  let endAngle = 1.75 * Math.PI;
+
+  if (deepankarMan.mouthOpen) {
+    if (deepankarMan.dx > 0) {
+      startAngle = 0.25 * Math.PI;
+      endAngle = 1.75 * Math.PI;
+    } else if (deepankarMan.dx < 0) {
+      startAngle = 1.25 * Math.PI;
+      endAngle = 0.75 * Math.PI + 2 * Math.PI;
+    } else if (deepankarMan.dy > 0) {
+      startAngle = 0.75 * Math.PI;
+      endAngle = 2.25 * Math.PI;
+    } else if (deepankarMan.dy < 0) {
+      startAngle = 1.75 * Math.PI;
+      endAngle = 1.25 * Math.PI + 2 * Math.PI;
+    }
+  } else {
+    startAngle = 0;
+    endAngle = 2 * Math.PI;
+  }
+
+  ctx.moveTo(x, y);
+  ctx.arc(x, y, radius, startAngle, endAngle);
+  ctx.lineTo(x, y);
+  ctx.fill();
+
+  // Mouth animation timer
+  deepankarMan.mouthTimer++;
+  if (deepankarMan.mouthTimer > 10) {
+    deepankarMan.mouthOpen = !deepankarMan.mouthOpen;
+    deepankarMan.mouthTimer = 0;
+  }
+}
+
+// Draw neural nodes (dots)
+function drawNeuralNodes() {
+  neuralNodes.forEach(node => {
+    if (!node.eaten) {
+      ctx.fillStyle = '#f5f5f5';
+      ctx.beginPath();
+      ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  });
+}
+
+// Draw data packets (bonus items)
+function drawDataPackets() {
+  dataPackets.forEach(packet => {
+    if (!packet.eaten) {
+      ctx.fillStyle = '#ff9800';
+      ctx.beginPath();
+      ctx.moveTo(packet.x, packet.y - packet.radius);
+      for(let i=1; i<6; i++) {
+        const angle = i * (Math.PI * 2 / 5);
+        ctx.lineTo(packet.x + packet.radius * Math.sin(angle), packet.y - packet.radius * Math.cos(angle));
+      }
+      ctx.closePath();
+      ctx.fill();
+    }
+  });
+}
+
+// Draw obstacles
+function drawObstacles() {
+  ctx.fillStyle = '#880e4f';
+  obstacles.forEach(ob => {
+    ctx.fillRect(ob.x, ob.y, ob.size, ob.size);
+  });
+}
+
+// Move Deepankar-Man
+function move() {
+  const nextX = deepankarMan.x + deepankarMan.dx;
+  const nextY = deepankarMan.y + deepankarMan.dy;
+
+  // Check wall collisions (edges)
+  if (nextX < 0 || nextX + deepankarMan.size > canvas.width ||
+      nextY < 0 || nextY + deepankarMan.size > canvas.height) {
+    return; // don't move if hitting boundary
+  }
+
+  // Check obstacle collisions
+  for (const ob of obstacles) {
+    if (isColliding(nextX, nextY, deepankarMan.size, ob.x, ob.y, ob.size)) {
+      return; // blocked by obstacle
+    }
+  }
+
+  deepankarMan.x = nextX;
+  deepankarMan.y = nextY;
+}
+
+// Eat neural nodes or data packets
+function eat() {
+  neuralNodes.forEach(node => {
+    if (!node.eaten) {
+      const dist = Math.hypot(deepankarMan.x + deepankarMan.size/2 - node.x, deepankarMan.y + deepankarMan.size/2 - node.y);
+      if (dist < deepankarMan.size/2 + node.radius) {
+        node.eaten = true;
+        score += 1;
+        updateScore();
+      }
+    }
+  });
+
+  dataPackets.forEach(packet => {
+    if (!packet.eaten) {
+      const dist = Math.hypot(deepankarMan.x + deepankarMan.size/2 - packet.x, deepankarMan.y + deepankarMan.size/2 - packet.y);
+      if (dist < deepankarMan.size/2 + packet.radius) {
+        packet.eaten = true;
+        score += 5; // bonus points
+        updateScore();
+      }
+    }
+  });
+}
+
+// Update score display
+function updateScore() {
+  scoreDisplay.textContent = 'Score: ' + score;
+}
+
+// Keyboard control
+document.addEventListener('keydown', e => {
+  switch(e.key) {
+    case 'ArrowUp':
+      deepankarMan.dx = 0;
+      deepankarMan.dy = -GRID;
+      break;
+    case 'ArrowDown':
+      deepankarMan.dx = 0;
+      deepankarMan.dy = GRID;
+      break;
+    case 'ArrowLeft':
+      deepankarMan.dx = -GRID;
+      deepankarMan.dy = 0;
+      break;
+    case 'ArrowRight':
+      deepankarMan.dx = GRID;
+      deepankarMan.dy = 0;
+      break;
+  }
+});
+
+// Game loop
+function loop() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  drawObstacles();
+  drawNeuralNodes();
+  drawDataPackets();
+  drawDeepankarMan();
+  move();
+  eat();
+
+  requestAnimationFrame(loop);
+}
+
+updateScore();
+loop();
+</script>
+</body>
+</html>
